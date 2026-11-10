@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - "ui/**"
+      - ".github/workflows/build.yml"
+      - "package.json"
+      - "package-lock.json"
 
 permissions:
   contents: write # нужно только для публикации релиза по тегу
