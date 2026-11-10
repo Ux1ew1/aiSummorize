@@ -1,6 +1,6 @@
 //! Задачи «суммаризация» и «перевод»: промпты, map-reduce по частям, события для UI.
 
-use crate::chunking::{split_text, Chunk};
+use crate::chunking::{split_text, Chunk, GLUE};
 use crate::llm::{self, GenError, GenParams, Loaded, Stats};
 use crate::models;
 use crate::settings::Settings;
@@ -77,7 +77,17 @@ fn lang_clause(lang: &str) -> String {
     if lang.is_empty() || lang == "auto" {
         "Write in the same language as the source text.".to_string()
     } else {
-        format!("Write in {lang}.")
+        format!("You must write the entire answer in {lang}, regardless of the language of the source text.")
+    }
+}
+
+/// Короткое напоминание о языке в конце пользовательского сообщения — маленькие модели
+/// лучше слушаются инструкцию, стоящую прямо перед ответом.
+fn lang_reminder(lang: &str) -> String {
+    if lang.is_empty() || lang == "auto" {
+        String::new()
+    } else {
+        format!("\n\nWrite the answer in {lang}.")
     }
 }
 
@@ -205,7 +215,8 @@ impl<'a> Runner<'a> {
 
         if total_tokens <= budget_single {
             status(self.app, self.job, "final", 1, 1, "Создание сводки…");
-            return self.gen(&sys1, &format!("Summarize the following text:\n\n{text}"), final_out, temp, 1.05, true);
+            let user = format!("Summarize the following text:\n\n{text}{}", lang_reminder(lang));
+            return self.gen(&sys1, &user, final_out, temp, 1.05, true);
         }
 
         // ---- MAP: сводка каждой части ----
@@ -231,7 +242,8 @@ impl<'a> Runner<'a> {
                 &format!("Сводка части {} из {}", i + 1, n),
             );
             let sys = sys_part(i + 1, n, lang);
-            let out = self.gen(&sys, &format!("Part {}/{}:\n\n{}", i + 1, n, chunk.text), map_out, 0.2, 1.05, false)?;
+            let user = format!("Part {}/{}:\n\n{}{}", i + 1, n, chunk.text, lang_reminder(lang));
+            let out = self.gen(&sys, &user, map_out, 0.2, 1.05, false)?;
             ev(
                 self.app,
                 self.job,
@@ -283,7 +295,8 @@ impl<'a> Runner<'a> {
                 let out = if g.len() == 1 {
                     g[0].clone()
                 } else {
-                    self.gen(&sys_m, &join_partials(g), map_out, 0.2, 1.05, false)?
+                    let user = format!("{}{}", join_partials(g), lang_reminder(lang));
+                    self.gen(&sys_m, &user, map_out, 0.2, 1.05, false)?
                 };
                 ev(
                     self.app,
@@ -301,7 +314,10 @@ impl<'a> Runner<'a> {
         let joined = join_partials(&partials);
         self.gen(
             &sys_f,
-            &format!("Partial summaries:\n\n{joined}\n\nWrite the final summary of the whole document."),
+            &format!(
+                "Partial summaries:\n\n{joined}\n\nWrite the final summary of the whole document.{}",
+                lang_reminder(lang)
+            ),
             final_out,
             temp,
             1.05,
@@ -335,9 +351,17 @@ impl<'a> Runner<'a> {
                 status(self.app, self.job, "final", 1, 1, "Перевод…");
             }
             if i > 0 {
-                let sep = if c.sep_before.is_empty() { "\n\n" } else { c.sep_before };
-                out.push_str(sep);
-                ev(self.app, self.job, json!({"kind":"token","text":sep}));
+                let sep = if c.sep_before.is_empty() {
+                    "\n\n"
+                } else if c.sep_before == GLUE {
+                    ""
+                } else {
+                    c.sep_before
+                };
+                if !sep.is_empty() {
+                    out.push_str(sep);
+                    ev(self.app, self.job, json!({"kind":"token","text":sep}));
+                }
             }
             let in_tokens = self.count(&c.text);
             let room = n_ctx.saturating_sub(overhead + in_tokens + 16);
@@ -480,7 +504,11 @@ fn run(
         r.translate(req.text.trim(), &target)
     } else {
         let len = req.length.clone().unwrap_or_else(|| s.summary_length.clone());
-        let lang = req.language.clone().unwrap_or_else(|| s.summary_language.clone());
+        let mut lang = req.language.clone().unwrap_or_else(|| s.summary_language.clone());
+        // «Как в оригинале»: для русского текста язык задаём явно — иначе маленькая модель отвечает по-английски
+        if (lang.is_empty() || lang == "auto") && cyrillic_share(&req.text) > 0.5 {
+            lang = "Russian".to_string();
+        }
         r.summarize(req.text.trim(), &len, &lang)
     };
 

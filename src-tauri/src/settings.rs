@@ -55,7 +55,7 @@ impl Default for Settings {
             fast_restart: false,
             keep_alive_minutes: 5,
             summary_length: "medium".into(),
-            summary_language: "auto".into(),
+            summary_language: "Russian".into(),
             translate_target: "Russian".into(),
             translate_secondary: "English".into(),
             hotkey_summarize: "CommandOrControl+Alt+S".into(),

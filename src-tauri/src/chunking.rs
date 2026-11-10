@@ -8,6 +8,9 @@ pub struct Chunk {
     pub sep_before: &'static str,
 }
 
+/// Маркер «без разделителя»: часть продолжает то же слово, что и предыдущая.
+pub const GLUE: &str = "\u{1}";
+
 struct Piece {
     text: String,
     tokens: usize,
@@ -39,26 +42,27 @@ fn sentences(par: &str) -> Vec<String> {
 }
 
 /// Режет слишком длинную строку по словам, а слова без пробелов — по символам.
-fn hard_split(s: &str, max: usize, count: &dyn Fn(&str) -> usize) -> Vec<String> {
-    let mut out = Vec::new();
+/// Второй элемент пары: true — кусок «склеен» с предыдущим (внутри одного слова), пробел между ними не нужен.
+fn hard_split(s: &str, max: usize, count: &dyn Fn(&str) -> usize) -> Vec<(String, bool)> {
+    let mut out: Vec<(String, bool)> = Vec::new();
     let mut cur = String::new();
     let mut cur_tokens = 0usize;
     for word in s.split_whitespace() {
         let wt = count(word) + 1;
         if wt > max {
             if !cur.is_empty() {
-                out.push(std::mem::take(&mut cur));
+                out.push((std::mem::take(&mut cur), false));
                 cur_tokens = 0;
             }
             let step = (max / 4).max(1);
             let chars: Vec<char> = word.chars().collect();
-            for part in chars.chunks(step) {
-                out.push(part.iter().collect());
+            for (i, part) in chars.chunks(step).enumerate() {
+                out.push((part.iter().collect(), i > 0));
             }
             continue;
         }
         if cur_tokens + wt > max && !cur.is_empty() {
-            out.push(std::mem::take(&mut cur));
+            out.push((std::mem::take(&mut cur), false));
             cur_tokens = 0;
         }
         if !cur.is_empty() {
@@ -68,7 +72,7 @@ fn hard_split(s: &str, max: usize, count: &dyn Fn(&str) -> usize) -> Vec<String>
         cur_tokens += wt;
     }
     if !cur.is_empty() {
-        out.push(cur);
+        out.push((cur, false));
     }
     out
 }
@@ -99,9 +103,15 @@ pub fn split_text(text: &str, max_tokens: usize, count: &dyn Fn(&str) -> usize) 
                 pieces.push(Piece { text: sent, tokens: st, sep });
             } else {
                 let mut inner_first = true;
-                for part in hard_split(&sent, max, count) {
+                for (part, glued) in hard_split(&sent, max, count) {
                     let t = count(&part);
-                    let s = if inner_first { sep } else { " " };
+                    let s = if inner_first {
+                        sep
+                    } else if glued {
+                        GLUE
+                    } else {
+                        " "
+                    };
                     inner_first = false;
                     pieces.push(Piece { text: part, tokens: t, sep: s });
                 }
@@ -124,7 +134,9 @@ pub fn split_text(text: &str, max_tokens: usize, count: &dyn Fn(&str) -> usize) 
             cur_tokens = p.tokens;
             cur = p.text;
         } else {
-            cur.push_str(if p.sep.is_empty() { " " } else { p.sep });
+            if p.sep != GLUE {
+                cur.push_str(if p.sep.is_empty() { " " } else { p.sep });
+            }
             cur.push_str(&p.text);
             cur_tokens += add;
         }
