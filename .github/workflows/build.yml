@@ -68,6 +68,17 @@ jobs:
           cuda: "12.6.2"
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
 
+      # Генератор Visual Studio не находит CUDA toolset ("No CUDA toolset found"),
+      # поэтому собираем llama.cpp через Ninja: ему нужны только nvcc и cl.exe в PATH.
+      - name: MSVC environment (for Ninja + nvcc)
+        if: matrix.cuda == true
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Use Ninja CMake generator
+        if: matrix.cuda == true
+        shell: pwsh
+        run: echo "CMAKE_GENERATOR=Ninja" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Restrict CUDA architectures (shorter build)
         if: matrix.cuda == true
         shell: pwsh
