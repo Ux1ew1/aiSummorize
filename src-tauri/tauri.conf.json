@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI Summorise",
   "version": "0.1.0",
-  "identifier": "com.summorise.app",
+  "identifier": "com.summorise.desktop",
   "build": {
     "frontendDist": "../ui"
   },

@@ -87,7 +87,25 @@ jobs:
       - run: npm ci
 
       - name: Build installer
+        if: runner.os != 'macOS'
         run: npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.tauri_args }}
+
+      # hdiutil на раннерах macOS иногда не может размонтировать образ ("Resource busy") —
+      # повторяем упаковку (компиляция при повторе берётся из кэша cargo).
+      - name: Build installer (macOS, with retries)
+        if: runner.os == 'macOS'
+        run: |
+          for attempt in 1 2 3; do
+            if npx tauri build --bundles ${{ matrix.bundles }} ${{ matrix.tauri_args }}; then
+              exit 0
+            fi
+            echo "Build attempt $attempt failed, cleaning up mounted images and retrying..."
+            for d in $(hdiutil info | grep -o '/dev/disk[0-9]*' | sort -u); do
+              hdiutil detach "$d" -force || true
+            done
+            sleep 15
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
