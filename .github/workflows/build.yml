@@ -25,7 +25,8 @@ jobs:
             tauri_args: ""
             bundle_glob: src-tauri/target/release/bundle/nsis/*.exe
           - name: windows-cuda
-            os: windows-latest
+            # CUDA 12.x интегрируется в Visual Studio 2022; на windows-latest уже VS 2026 ("No CUDA toolset found")
+            os: windows-2022
             bundles: nsis
             tauri_args: "-- --features cuda"
             cuda: true
