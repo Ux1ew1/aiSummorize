@@ -35,7 +35,7 @@ jobs:
             # CUDA 12.x интегрируется в Visual Studio 2022; на windows-latest уже VS 2026 ("No CUDA toolset found")
             os: windows-2022
             bundles: nsis
-            tauri_args: "-- --features cuda"
+            tauri_args: "--config src-tauri/tauri.cuda.conf.json -- --features cuda"
             cuda: true
             bundle_glob: src-tauri/target/release/bundle/nsis/*.exe
           - name: macos-intel
@@ -74,6 +74,20 @@ jobs:
         with:
           cuda: "12.6.2"
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
+
+      # Без этих DLL CUDA-сборка не стартует на ПК без CUDA Toolkit
+      # ("не обнаружена cublas64_12.dll"): кладём их в установщик рядом с exe.
+      - name: Collect CUDA runtime DLLs for the installer
+        if: matrix.cuda == true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/cuda-libs | Out-Null
+          foreach ($n in 'cudart64_12.dll','cublas64_12.dll','cublasLt64_12.dll') {
+            $f = Get-ChildItem -Path $env:CUDA_PATH -Recurse -Filter $n -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $f) { throw "$n not found under $env:CUDA_PATH" }
+            Copy-Item $f.FullName src-tauri/cuda-libs/
+          }
+          Get-ChildItem src-tauri/cuda-libs | Format-Table Name, Length
 
       # Генератор Visual Studio не находит CUDA toolset ("No CUDA toolset found"),
       # поэтому собираем llama.cpp через Ninja: ему нужны только nvcc и cl.exe в PATH.
