@@ -1,0 +1,16 @@
+{
+  "name": "ai-summorise",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Локальный суммаризатор и переводчик на Qwen + llama.cpp (Tauri 2)",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:cuda": "tauri build -- --features cuda",
+    "dev:cuda": "tauri dev -- --features cuda"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

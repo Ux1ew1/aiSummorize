@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Summorise</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">≡</span>
+      <span class="name">AI Summorise</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="summary" role="tab">Сводка</button>
+      <button class="tab" data-tab="translate" role="tab">Перевод</button>
+      <button class="tab" data-tab="settings" role="tab">Настройки</button>
+    </nav>
+    <div class="chips">
+      <span class="chip" id="chip-backend" title="Вычислительный бэкенд сборки">CPU</span>
+      <span class="chip" id="chip-model" title="Состояние модели в памяти">Модель выгружена</span>
+      <button class="chip btn-chip" id="btn-unload" title="Выгрузить модель из памяти / VRAM" hidden>Выгрузить</button>
+      <button class="icon-btn" id="btn-hide" title="Свернуть в трей">–</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ======================= СВОДКА ======================= -->
+    <section class="panel active" id="tab-summary">
+      <div class="card grow">
+        <div class="card-head">
+          <label for="sum-input">Исходный текст</label>
+          <span class="muted" id="sum-count">0 символов</span>
+        </div>
+        <textarea id="sum-input" placeholder="Вставьте текст или выделите его в любом приложении и нажмите горячую клавишу…"></textarea>
+        <div class="row controls">
+          <label class="inline">Длина
+            <select id="sum-length">
+              <option value="short">Коротко</option>
+              <option value="medium">Средне</option>
+              <option value="detailed">Подробно</option>
+            </select>
+          </label>
+          <label class="inline">Язык сводки
+            <select id="sum-lang"></select>
+          </label>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="sum-clear">Очистить</button>
+          <button class="btn primary" id="sum-run">Создать сводку</button>
+          <button class="btn danger" id="sum-stop" hidden>Стоп</button>
+        </div>
+      </div>
+
+      <div class="card grow">
+        <div class="card-head">
+          <label>Результат</label>
+          <button class="btn small" id="sum-copy" disabled>Копировать</button>
+        </div>
+        <div class="progress" id="sum-progress" hidden><div class="bar"></div></div>
+        <div class="status" id="sum-status"></div>
+        <div class="result" id="sum-result" aria-live="polite"></div>
+        <details id="sum-partials-wrap" hidden>
+          <summary>Промежуточные сводки (<span id="sum-partials-count">0</span>)</summary>
+          <div id="sum-partials"></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ======================= ПЕРЕВОД ======================= -->
+    <section class="panel" id="tab-translate">
+      <div class="card grow">
+        <div class="card-head">
+          <label for="tr-input">Текст для перевода</label>
+          <span class="muted" id="tr-count">0 символов</span>
+        </div>
+        <textarea id="tr-input" placeholder="Введите или вставьте текст…"></textarea>
+        <div class="row controls">
+          <label class="inline">Перевести на
+            <select id="tr-target"></select>
+          </label>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="tr-clear">Очистить</button>
+          <button class="btn primary" id="tr-run">Перевести</button>
+          <button class="btn danger" id="tr-stop" hidden>Стоп</button>
+        </div>
+      </div>
+
+      <div class="card grow">
+        <div class="card-head">
+          <label>Перевод <span class="muted" id="tr-lang-note"></span></label>
+          <button class="btn small" id="tr-copy" disabled>Копировать</button>
+        </div>
+        <div class="progress" id="tr-progress" hidden><div class="bar"></div></div>
+        <div class="status" id="tr-status"></div>
+        <div class="result" id="tr-result" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ======================= НАСТРОЙКИ ======================= -->
+    <section class="panel" id="tab-settings">
+      <div class="settings-grid">
+        <div class="card">
+          <h3>Модель</h3>
+          <div id="model-list"></div>
+          <div class="model-item" id="custom-model">
+            <div class="title">Свой файл с диска</div>
+            <div class="hint">Любая модель Qwen в формате GGUF (шаблон ChatML), уже лежащая на диске. Файл не копируется — используется по указанному пути.</div>
+            <div class="quant-row">
+              <span class="label" id="custom-name">Файл не выбран</span>
+              <span class="badge" id="custom-badge"></span>
+              <button class="btn small" id="custom-use" hidden>Использовать</button>
+              <button class="btn small" id="custom-pick">Выбрать файл…</button>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn small" id="btn-open-models">Открыть папку моделей</button>
+            <span class="muted" id="models-dir"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Генерация</h3>
+          <label class="field">Окно контекста: <b id="ctx-value">8192</b> токенов
+            <input type="range" id="set-ctx" min="8192" max="16384" step="1024" />
+          </label>
+          <label class="field">Максимум токенов в ответе: <b id="out-value">1024</b>
+            <input type="range" id="set-out" min="256" max="4096" step="128" />
+          </label>
+          <label class="field">Вычисления
+            <select id="set-gpu">
+              <option value="auto">Авто (GPU, если доступен)</option>
+              <option value="cpu">Только CPU</option>
+            </select>
+          </label>
+          <label class="field">Потоки CPU (0 — авто)
+            <input type="number" id="set-threads" min="0" max="64" />
+          </label>
+          <p class="hint">Длинные тексты автоматически делятся на части, для каждой строится промежуточная сводка, затем сводки объединяются в итоговый пересказ.</p>
+        </div>
+
+        <div class="card">
+          <h3>Ресурсы</h3>
+          <label class="check"><input type="checkbox" id="set-fast" />
+            Быстрый повторный запуск (держать модель в памяти)</label>
+          <label class="field" id="keep-wrap">Выгружать после простоя: <b id="keep-value">5</b> мин
+            <input type="range" id="set-keep" min="1" max="60" step="1" />
+          </label>
+          <p class="hint">По умолчанию модель загружается только по запросу и сразу выгружается после генерации, освобождая память и VRAM. В быстром режиме повторные запросы стартуют мгновенно, но память занята до таймаута.</p>
+          <label class="check"><input type="checkbox" id="set-autostart" /> Запускать вместе с системой (в трее)</label>
+        </div>
+
+        <div class="card">
+          <h3>Горячие клавиши</h3>
+          <label class="field">Сводка выделенного текста
+            <input class="hotkey" id="hk-summarize" readonly />
+          </label>
+          <label class="field">Перевод выделенного текста
+            <input class="hotkey" id="hk-translate" readonly />
+          </label>
+          <label class="field">Открыть окно
+            <input class="hotkey" id="hk-open" readonly />
+          </label>
+          <p class="hint">Нажмите в поле и введите сочетание (Backspace — очистить). Нужен хотя бы один модификатор. На macOS потребуется разрешение «Универсальный доступ» для эмуляции Cmd+C.</p>
+          <div class="warn" id="hk-warn" hidden></div>
+        </div>
+
+        <div class="card">
+          <h3>По умолчанию</h3>
+          <label class="field">Длина сводки
+            <select id="set-sumlen">
+              <option value="short">Коротко</option>
+              <option value="medium">Средне</option>
+              <option value="detailed">Подробно</option>
+            </select>
+          </label>
+          <label class="field">Язык сводки
+            <select id="set-sumlang"></select>
+          </label>
+          <label class="field">Основной язык перевода
+            <select id="set-trtarget"></select>
+          </label>
+          <label class="field">Запасной язык (если текст уже на основном)
+            <select id="set-trsecondary"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="set-autocopy" /> Копировать результат в буфер после горячей клавиши</label>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statsbar" id="statsbar">
+    <span id="st-speed" class="speed">Скорость: —</span>
+    <span id="st-detail" class="muted"></span>
+  </footer>
+
+  <!-- ======================= ПЕРВЫЙ ЗАПУСК ======================= -->
+  <div class="overlay" id="setup" hidden>
+    <div class="modal">
+      <h2>Добро пожаловать в AI Summorise</h2>
+      <p>Для работы нужна локальная модель в формате GGUF. Она скачивается один раз с HuggingFace и работает полностью офлайн.</p>
+
+      <label class="field">Модель
+        <select id="setup-preset"></select>
+      </label>
+      <p class="hint" id="setup-note"></p>
+
+      <div class="quants" id="setup-quants"></div>
+
+      <div class="progress" id="setup-progress" hidden><div class="bar"></div></div>
+      <div class="status" id="setup-status"></div>
+
+      <div class="row">
+        <button class="btn" id="setup-pick" title="Использовать уже скачанный файл .gguf">Выбрать файл с диска…</button>
+        <span class="spacer"></span>
+        <button class="btn danger" id="setup-cancel" hidden>Остановить</button>
+        <button class="btn primary" id="setup-download">Скачать</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
